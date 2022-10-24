@@ -1,0 +1,85 @@
+pipeline {
+  agent {
+    label 'x86_64 && docker-test'
+  }
+
+  parameters {
+    booleanParam(name: 'VERBOSE')
+    booleanParam(name: 'CLEAN')
+    choice(name: 'BUILDTYPE', choices: ['Release', 'Debug'])
+    string(name: 'REPO_GIT_REF', defaultValue: 'main', description: 'https://github.com/noslate-project/manifest, used as `repo init -b branchname`')
+    text(name: 'PULL_REQUEST_IDS', defaultValue: '', description: 'Pull requests to be tested. e.g.<br/>aworker:123<br/>noslated:456')
+    text(name: 'TEST_PROJECTS', defaultValue: '', description: 'Optional, run project tests. e.g.<br/>aworker noslated')
+  }
+
+  options {
+    timeout(time: 1, unit: 'HOURS')
+  }
+
+  stages {
+    stage('Clean') {
+      when {
+        expression { return params.CLEAN }
+      }
+      steps {
+        cleanWs()
+      }
+    }
+
+    stage('Clone') {
+      steps {
+        buildDescription "${params.BUILDTYPE} ${params.REPO_GIT_REF}"
+        dir('workspace') {
+          checkout changelog: true, poll: false, scm: [$class: 'RepoScm',
+            manifestRepositoryUrl: 'https://github.com/noslate-project/manifest.git',
+            forceSync: true, quiet: true,
+            manifestBranch: "${params.REPO_GIT_REF}"]
+        }
+
+        sh """#!/bin/bash
+          set -ex
+
+          if [ ! -z "${params.REPO_REFS}" ]; then
+            printf "${params.REPO_REFS}" | xargs bash scripts/download-pr.sh --root \$(pwd)/workspace
+          fi
+        """
+      }
+    }
+
+    stage('Build') {
+      agent {
+        docker {
+          image 'ghcr.io/noslate-project/ubuntu:focal-noslate'
+          reuseNode true
+        }
+      }
+      steps {
+        dir('workspace') {
+          sh """#!/bin/bash
+            set -ex
+            # npm config dir
+            export HOME=\$(pwd)
+            export TZ=Asia/Shanghai
+
+            rm -f build/*.tar*
+            cd build
+            make clean
+            if [ "${params.VERBOSE}" = 'true' ]; then
+              V=1
+            else
+              V=0
+            fi
+
+            make lint
+            ./configure --ninja
+            if [ -z "${params.TEST_PROJECTS}" ]; then
+              make V=\$V BUILDTYPE=${params.BUILDTYPE} -w test
+            else
+              make V=\$V BUILDTYPE=${params.BUILDTYPE} TEST_PROJECTS="${params.TEST_PROJECTS}" -w test
+            fi
+          """
+        }
+      }
+    }
+  }
+}
