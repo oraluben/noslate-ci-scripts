@@ -30,6 +30,10 @@ done
 
 cd $REPO_ROOT
 
+if [ -z "$PROJ" ]; then
+ exit
+fi
+
 for proj in ${PROJ[@]}; do
   segments=(${proj//:/ })
   SCRIPTS=$(cat <<-END

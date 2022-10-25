@@ -16,6 +16,10 @@ pipeline {
     timeout(time: 1, unit: 'HOURS')
   }
 
+  environment {
+    GITHUB_TOKEN = credentials('noslate-bot-github-token')
+  }
+
   stages {
     stage('Clean') {
       when {
@@ -27,20 +31,30 @@ pipeline {
     }
 
     stage('Clone') {
+      agent {
+        docker {
+          image 'ghcr.io/noslate-project/ubuntu:focal-noslate'
+          reuseNode true
+          alwaysPull true
+        }
+      }
+
       steps {
-        buildDescription "${params.BUILDTYPE} ${params.REPO_GIT_REF}"
         dir('workspace') {
-          checkout changelog: true, poll: false, scm: [$class: 'RepoScm',
-            manifestRepositoryUrl: 'https://github.com/noslate-project/manifest.git',
-            forceSync: true, quiet: true,
-            manifestBranch: "${params.REPO_GIT_REF}"]
+          sh """
+            set -ex
+
+            repo init --verbose -u https://github.com/noslate-project/manifest.git -b "${params.REPO_GIT_REF}"
+            repo sync --force-sync --verbose
+          """
         }
 
         sh """#!/bin/bash
-          set -ex
+          set -e
 
-          if [ ! -z "${params.REPO_REFS}" ]; then
-            printf "${params.REPO_REFS}" | xargs bash scripts/download-pr.sh --root \$(pwd)/workspace
+          if [ ! -z "${params.PULL_REQUEST_IDS}" ]; then
+            printf "${params.PULL_REQUEST_IDS}" | xargs bash scripts/download-pr.sh --root \$(pwd)/workspace
+            printf "${params.PULL_REQUEST_IDS}" | xargs bash scripts/report-pr-status.sh --root \$(pwd)/workspace --state pending
           fi
         """
       }
@@ -51,8 +65,10 @@ pipeline {
         docker {
           image 'ghcr.io/noslate-project/ubuntu:focal-noslate'
           reuseNode true
+          alwaysPull true
         }
       }
+
       steps {
         dir('workspace') {
           sh """#!/bin/bash
@@ -70,12 +86,29 @@ pipeline {
               V=0
             fi
 
-            make lint
+            make LINT_PROJECTS="${params.TEST_PROJECTS}" lint
             ./configure --ninja
             if [ -z "${params.TEST_PROJECTS}" ]; then
               make V=\$V BUILDTYPE=${params.BUILDTYPE} -w test
             else
               make V=\$V BUILDTYPE=${params.BUILDTYPE} TEST_PROJECTS="${params.TEST_PROJECTS}" -w test
+            fi
+          """
+        }
+      }
+
+      post {
+        success {
+          sh """#!/bin/bash
+            if [ ! -z "${params.PULL_REQUEST_IDS}" ]; then
+              printf "${params.PULL_REQUEST_IDS}" | xargs bash scripts/report-pr-status.sh --root \$(pwd)/workspace --state success
+            fi
+          """
+        }
+        failure {
+          sh """#!/bin/bash
+            if [ ! -z "${params.PULL_REQUEST_IDS}" ]; then
+              printf "${params.PULL_REQUEST_IDS}" | xargs bash scripts/report-pr-status.sh --root \$(pwd)/workspace --state failure
             fi
           """
         }
