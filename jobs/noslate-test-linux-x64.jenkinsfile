@@ -21,15 +21,6 @@ pipeline {
   }
 
   stages {
-    stage('Clean') {
-      when {
-        expression { return params.CLEAN }
-      }
-      steps {
-        cleanWs()
-      }
-    }
-
     stage('Clone') {
       agent {
         docker {
@@ -40,16 +31,22 @@ pipeline {
       }
 
       steps {
+        sh """
+          if [ "${params.CLEAN}" = 'true' ]; then
+            rm -rf workspace
+          fi
+        """
+
         dir('workspace') {
           sh """
             set -ex
 
-            repo init --verbose -u https://github.com/noslate-project/manifest.git -b "${params.REPO_GIT_REF}"
-            repo sync --force-sync --verbose
+            repo init --no-clone-bundle -u https://github.com/noslate-project/manifest.git -b "${params.REPO_GIT_REF}"
+            repo sync --force-sync --no-clone-bundle
           """
         }
 
-        sh """#!/bin/bash
+        sh """
           set -e
 
           if [ ! -z "${params.PULL_REQUEST_IDS}" ]; then
