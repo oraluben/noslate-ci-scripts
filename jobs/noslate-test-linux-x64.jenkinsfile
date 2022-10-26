@@ -98,14 +98,14 @@ pipeline {
         success {
           sh """#!/bin/bash
             if [ ! -z "${params.PULL_REQUEST_IDS}" ]; then
-              printf "${params.PULL_REQUEST_IDS}" | xargs bash scripts/report-pr-status.sh --root \$(pwd)/workspace --state success
+              printf "${params.PULL_REQUEST_IDS}" | xargs bash scripts/report-pr-status.sh --root \$(pwd)/workspace --state success --description "Tested ${params.TEST_PROJECTS}."
             fi
           """
         }
         failure {
           sh """#!/bin/bash
             if [ ! -z "${params.PULL_REQUEST_IDS}" ]; then
-              printf "${params.PULL_REQUEST_IDS}" | xargs bash scripts/report-pr-status.sh --root \$(pwd)/workspace --state failure
+              printf "${params.PULL_REQUEST_IDS}" | xargs bash scripts/report-pr-status.sh --root \$(pwd)/workspace --state failure --description "Tested ${params.TEST_PROJECTS}."
             fi
           """
         }

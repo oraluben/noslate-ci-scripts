@@ -13,6 +13,7 @@ END
 PROJ=()
 # Can be one of: error, failure, pending, success
 STATE=pending
+DESCRIPTION=
 while [ $# -gt 0 ]; do
 case $1 in
 '--help')
@@ -25,6 +26,10 @@ case $1 in
   ;;
 '--state')
   STATE=$2
+  shift
+  ;;
+'--description')
+  DESCRIPTION=$2
   shift
   ;;
 *)
@@ -45,6 +50,10 @@ if [ -z "$GITHUB_TOKEN" ]; then
   exit 1
 fi
 
+if [ -z "$DESCRIPTION" ]; then
+  DESCRIPTION=$STATE
+fi
+
 for proj in ${PROJ[@]}; do
   segments=(${proj//:/ })
   # Message of refs/pull/<pr-id>/merge, e.g.
@@ -58,7 +67,7 @@ for proj in ${PROJ[@]}; do
       -H "Accept: application/vnd.github+json" \
       -H "Authorization: Bearer $GITHUB_TOKEN" \
       https://api.github.com/repos/noslate-project/${segments[0]}/statuses/\$SHA \
-      -d "{\"state\":\"$STATE\",\"target_url\":\"$BUILD_URL\",\"context\":\"continuous-integration/$JOB_BASE_NAME\"}"
+      -d "{\"state\":\"$STATE\",\"target_url\":\"$BUILD_URL\",\"description\":\"$DESCRIPTION\",\"context\":\"continuous-integration/$JOB_BASE_NAME\"}"
 END
 )
   repo forall ${segments[0]} -c "bash -c '$SCRIPTS'"
