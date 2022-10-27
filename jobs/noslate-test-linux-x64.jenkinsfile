@@ -24,7 +24,7 @@ pipeline {
     stage('Clone') {
       agent {
         docker {
-          image 'ghcr.io/noslate-project/ubuntu:focal-noslate'
+          image 'ghcr.io/noslate-project/centos:8'
           reuseNode true
           alwaysPull true
         }
@@ -60,7 +60,7 @@ pipeline {
     stage('Build') {
       agent {
         docker {
-          image 'ghcr.io/noslate-project/ubuntu:focal-noslate'
+          image 'ghcr.io/noslate-project/centos:8'
           reuseNode true
           alwaysPull true
         }
