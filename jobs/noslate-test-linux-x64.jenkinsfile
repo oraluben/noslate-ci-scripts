@@ -79,6 +79,7 @@ pipeline {
             make clean
             if [ "${params.VERBOSE}" = 'true' ]; then
               V=1
+              export NOSLATED_LOG_LEVEL=debug
             else
               V=0
             fi
