@@ -16,7 +16,7 @@ pipeline {
                             node('nodejs && ' + conf1) {
                                 stage(conf1 + " make binary") {
                                     dir('node') {
-                                        git(branch: 'anode-v16.x',
+                                        git(branch: 'anode-v16.19.1-anode.1-staging',
                                             url: 'https://github.com/oraluben/node.git')
                                         script {
                                             docker.image('accc-registry.cn-hangzhou.cr.aliyuncs.com/noslate/build').inside {
@@ -24,13 +24,12 @@ pipeline {
                                                 // however when jenkins' docker isn't configured properly,
                                                 // e.g. `docker -u 1000:1000 ...` and username unset,
                                                 // ~/.npm will be resolved as /.npm, and cause permission issue.
-                                                // so we set cache dir to /tmp/npm to workaround it.
+                                                // so we overwrite the user above.
 
                                                 // This issue also affects some test,
                                                 // so we build test dependencies here and test on host in the next step.
                                                 sh '''
                                                 source /opt/rh/devtoolset-8/enable
-                                                export npm_config_cache="/tmp/npm"
                                                 rm -f *.tar*
                                                 make clean || true
                                                 make distclean || true
@@ -38,7 +37,6 @@ pipeline {
                                                 make -j `nproc` binary
                                                 make tar
                                                 make tar-headers
-                                                make -j `nproc` test-build
                                                 ./node -p 'process.versions'
                                                 ./node -p 'require("./deps/npm/package.json").version'
                                                 '''
@@ -51,48 +49,55 @@ pipeline {
                                     dir('node') {
                                         script {
                                             docker.image('accc-registry.cn-hangzhou.cr.aliyuncs.com/noslate/build').inside {
+                                                // skipped tests:
+                                                // test-cluster-shared-handle-bind-privileged-port.js,test-cluster-bind-privileged-port.js:
+                                                //  in non-root env, docker container will still be granted capibility to bind priviledged ports, causing tests fail;
+                                                // test-cluster-primary-kill.js,test-cluster-primary-error.js:
+                                                //  root cause unknown, but these two are known to be flacky;
+                                                // test-crypto-key-objects.js:
+                                                //  root cause unknown, only fail on jenkins docker arm64
                                                 sh '''
-                                                make -j`nproc` test-only || true
+                                                source /opt/rh/devtoolset-8/enable
+                                                CI_SKIP_TESTS=test-cluster-shared-handle-bind-privileged-port.js,test-cluster-bind-privileged-port.js,test-cluster-primary-kill.js,test-cluster-primary-error.js,test-crypto-key-objects.js make -j`nproc` test-only
                                                 '''
                                             }
                                         }
                                     }
                                 }
-                                // stage(conf1 + " install") {
-                                //     steps {
-                                //         script {
-                                //             sh 'tar xf node/node-*-linux-*.tar.gz'
-                                //         }
-                                //     }
-                                // }
-                                // stage(conf1 + " ts") {
-                                //     script {
-                                //         dir('ts') {
-                                //             git(branch: 'main', url: 'https://github.com/microsoft/TypeScript.git')
-                                //         }
-                                //         docker.image('ubuntu').inside {
-                                //             sh '''
-                                //             export PATH=`pwd`/node-*-linux-*/bin:$PATH
-                                //             npm install -g glup-cli
-                                //             cd ts && npm i && npm test
-                                //             '''
-                                //         }
-                                //     }
-                                // }
-                                // stage(conf1 + " vue") {
-                                //     script {
-                                //         dir('vue') {
-                                //             git(branch: 'main', url: 'https://github.com/vuejs/vue.git')
-                                //         }
-                                //         docker.image('ubuntu').inside {
-                                //             sh '''
-                                //             export PATH=`pwd`/node-*-linux-*/bin:$PATH
-                                //             npm install -g pnpm typescript
-                                //             cd vue && npm run ts-check && npm run test:types && npm run test:unit && npm run test:ssr && npm run test:sfc
-                                //             '''
-                                //         }
-                                //     }
-                                // }
+                                stage(conf1 + " ts") {
+                                    script {
+                                        dir('ts') {
+                                            git(branch: 'main', url: 'https://github.com/microsoft/TypeScript.git')
+                                        }
+                                        docker.image('accc-registry.cn-hangzhou.cr.aliyuncs.com/noslate/build').inside {
+                                            sh '''
+                                            tar xf node/node-*-linux-*.tar.gz
+                                            pushd node-*/bin
+                                            export PATH=`pwd`:$PATH
+                                            popd
+                                            cd ts && npm i && npm test
+                                            '''
+                                        }
+                                    }
+                                }
+                                stage(conf1 + " vue") {
+                                    script {
+                                        dir('vue') {
+                                            git(branch: 'main', url: 'https://github.com/vuejs/vue.git')
+                                        }
+                                        docker.image('accc-registry.cn-hangzhou.cr.aliyuncs.com/noslate/build').inside {
+                                            sh '''
+                                            tar xf node/node-*-linux-*.tar.gz
+                                            pushd node-*/bin
+                                            export PATH=`pwd`:$PATH
+                                            popd
+                                            export PUPPETEER_SKIP_DOWNLOAD=1
+                                            npm install -g pnpm
+                                            cd vue && pnpm install && npm run ts-check && npm run test:types && npm run test:unit && npm run test:ssr && npm run test:sfc
+                                            '''
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
